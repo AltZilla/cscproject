@@ -1,7 +1,7 @@
 import mysql.connector as mysql
 import csv
 
-conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'project')
+conn = mysql.connect(host='localhost', user='root', password='sample', database = 'project')
 
 if conn.is_connected():
     cur = conn.cursor()

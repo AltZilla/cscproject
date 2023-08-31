@@ -13,7 +13,7 @@ ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark
 
 # password = ctk.CTkInputDialog(title = "Login", text = "Enter password for `root` user").get_input() # this will make a window and ask user for password, and wait for a response
 
-conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'project')
+conn = mysql.connect(host='localhost', user='root', password='sample', database = 'project')
 
 if conn.is_connected():
     cur = conn.cursor()

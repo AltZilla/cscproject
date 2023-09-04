@@ -1,17 +1,20 @@
 import mysql.connector as mysql
-import customtkinter as ctk
 import pygame
+import time
+import keyboard
 
-from functools import partial
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.live import Live
+from rich.text import Text
+from rich.align import Align
+from rich.table import Table, box
+from rich.layout import Layout
 
-from PIL import Image
+console = Console()
 
 pygame.init()
-
-ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
-ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
-
-# password = ctk.CTkInputDialog(title = "Login", text = "Enter password for `root` user").get_input() # this will make a window and ask user for password, and wait for a response
+pygame.mixer.music.set_endevent(45)
 
 conn = mysql.connect(host='localhost', user='root', password='sample', database = 'project')
 
@@ -21,123 +24,158 @@ else:
     print("Failed to connect to MySQL server")
     exit() # this quits the program
 
-queue = [] # The first song will be the current playing song
-search_results = []
+queue = []
+pressed_keys = []
 
-root = ctk.CTk()
-root.geometry("1100x580") # set the window dimensions in pixels
+keyboard.on_press(lambda key: pressed_keys.append(key.name))
 
-# configure grid layout (1x2)
-root.grid_columnconfigure(0, weight=0)  # Column 0 (sidebar) won't expand
-root.grid_columnconfigure(1, weight=1)  # Column 1 (main frame) will expand
-root.grid_rowconfigure(0, weight=1)
-
-# Tkinter Variables
-search_var = ctk.StringVar()
-
-# create sidebar frame
-sidebar_frame = ctk.CTkFrame(root, width = 250, corner_radius=0)
-sidebar_frame.grid(row=0, column=0, rowspan=1, sticky="nsew", padx = (0, 10))
-
-def draw_sidebar_widgets():
-    sidebar_frame.grid_rowconfigure(4, weight = 1)
-    
-    logo = ctk.CTkImage(Image.open("assets/logo.png"), size=(26, 26))
-    frame_label = ctk.CTkLabel(sidebar_frame, text="  No Name Yet", image=logo,
-                                        compound="left", font=ctk.CTkFont(size=15, weight="bold"))
-    frame_label.grid(row=0, column=0, padx=20, pady=20)
-    
-    home_icon = ctk.CTkImage(Image.open("assets/home.png"), size=(26, 26))
-    home_button = ctk.CTkButton(sidebar_frame, corner_radius=0, height=40, border_spacing=10, text="Home",
-                                                   fg_color="transparent", text_color=("gray10", "gray90"), hover_color=("gray70", "gray30"),
-                                                   image=home_icon, anchor="w", command = partial(change_tab, "home"))
-    home_button.grid(row=1, column=0, sticky="ew")
-    
-    search_icon = ctk.CTkImage(Image.open("assets/search.png"), size=(26, 26))
-    search_button = ctk.CTkButton(sidebar_frame, corner_radius=0, height=40, border_spacing=10, text="Search",
-                                                   fg_color="transparent", text_color=("gray10", "gray90"), hover_color=("gray70", "gray30"),
-                                                   image= search_icon, anchor="w", command = partial(change_tab, "search"))
-    search_button.grid(row=2, column=0, sticky="ew")
-
-
-# create main frame
-main_frame = ctk.CTkFrame(root, corner_radius=0)
-main_frame.grid(row=0, column=1, rowspan=1, sticky="nsew")
-
-def draw_home_widgets():
-    pass
-
-def draw_search_widgets():
-    global entry, album_results_frame, results_frame
-    
-    main_frame.grid_rowconfigure(0, weight = 0)
-    main_frame.grid_rowconfigure(1, weight = 1)
-    main_frame.grid_columnconfigure((0, 1), weight = 1)
-    
-    entry = ctk.CTkEntry(main_frame, placeholder_text="Search",
-                         textvariable = search_var)
-    entry.bind("<Return>", search) # This will call search() when return is pressed.
-    entry.grid(row = 0, column = 0, columnspan=2, sticky = 'ew')
-    
-    # results_frame = ctk.CTkScrollableFrame(main_frame)
-    # results_frame.grid(row = 1, column = 0, sticky = 'news', pady = 10)
-
-    album_frame = ctk.CTkFrame(main_frame)
-    album_frame.grid(row = 1, column = 0, sticky = 'news', pady = 10)
-    
-    text_label = ctk.CTkLabel(album_frame, text = 'Album', font = (26, 26))
-    text_label.pack(pady = 15)
-    
-    album_results_frame = ctk.CTkFrame(album_frame)
-    album_results_frame.pack(fill = 'x', padx = 20)
-    
-    songs_frame = ctk.CTkFrame(main_frame)
-    songs_frame.grid(row = 1, column = 1, sticky = 'news', pady = 10)
-    
-    text_label = ctk.CTkLabel(songs_frame, text = 'Songs', font = (26, 26))
-    text_label.pack(pady = 15)
-    
-    results_frame = ctk.CTkFrame(songs_frame)
-    results_frame.pack(fill = 'x', padx = 20)
-    
-def change_tab(name):
-    for widget in main_frame.winfo_children():
-        widget.destroy()
-    
-    # show selected frame
-    if name == "home":
-        draw_home_widgets()
-    elif name == "search":
-        draw_search_widgets()
-    
-def search(event): # event is the keypress event, when "Enter" is clicked
-    for widget in results_frame.winfo_children():
-        widget.destroy()
-    
-    query = "SELECT * FROM songs WHERE title LIKE '%{}%'".format(search_var.get())
-    cur.execute(query)
-    results = cur.fetchall()
-    
-    for song_id, title, artist, liked, album, release_date, spotify_id in results[:8]:
-        
-        frame = ctk.CTkFrame(results_frame, fg_color='transparent')
-        frame.pack(fill='x')  # Fill the x axis
-
-        image_label = ctk.CTkLabel(frame, text='', image=ctk.CTkImage(Image.open('assets/logo.png'), size=(35, 35)))
-        image_label.pack(side='left', padx=10, pady=5)
-
-        song_details = ctk.CTkButton(frame, text=title + '\n' + artist, fg_color='transparent', command = partial(play_song, spotify_id))
-        song_details.pack(side='left', padx = 1, fill = 'x', expand = True)
-
-        duration_label = ctk.CTkButton(frame, width = 100, text='3:40', fg_color='transparent')
-        duration_label.pack(side='right')
-
-        
-def play_song(filename):
-    pygame.mixer.music.load('songs/' + filename + '.mp3')
+def play_queued_song():
+    song_data = queue[0]
+    pygame.mixer.music.load('songs/' + song_data[3] + '.mp3')
     pygame.mixer.music.play()
 
-draw_sidebar_widgets()
-draw_home_widgets()
+def queue_song(song_id):
+    query = "SELECT title, album, artist FROM songs where spotify_id = '{}'".format(song_id)
+    cur.execute(query)
 
-root.mainloop() # This creates and opens the window
+    title, album, artist = cur.fetchone()
+    queue.append([title, album, artist, song_id])
+    
+    if len(queue) == 1:
+        play_queued_song()
+        
+def handle_events():
+    for event in pygame.event.get():
+        if event.type == 45:
+            queue.pop(0)
+            play_queued_song()
+        
+    
+def make_main_layout(selected_song = 0):
+    if queue == []:
+        text = Align.center(
+            Text("There is no song currently playing!", justify = 'center'),
+            vertical = 'middle'
+        )
+        playing_panel = Panel(text, title = 'Not Playing', style = 'red')
+    else:
+        song_data = queue[0]
+        text = Align.left(
+            Text.from_markup("[red]{}[/]\non {}\nby {}".format(song_data[0], song_data[1], song_data[2])),
+            vertical = 'middle'
+        )
+        playing_panel = Panel(text, title = 'Now Playing {}'.format(pygame.mixer.music.get_pos()), style = 'red')
+        
+    if queue[1:] == []:
+        queue_panel = Panel(
+            Align.center(Text("There are no songs in the queue!", justify = 'center'), vertical = 'middle'),
+            title = 'Queue', style = 'magenta')
+    else:
+        queue_table = Table(title = "Search Results", box = box.SIMPLE_HEAD, expand = True)
+        queue_table.add_column("#", style = 'dim')
+        queue_table.add_column("Name", style = 'yellow')
+        queue_table.add_column("Duration", style = 'dim')
+        
+        for i in range(len(queue)):
+            style = None
+            if i == selected_song:
+                style = 'on yellow'
+            queue_table.add_row(str(i), queue[i][0], "3:00", style = style)
+        
+        queue_panel = Panel(queue_table, title = 'Queue', style = 'magenta')
+
+    return Group(playing_panel, queue_panel)
+                
+def search_screen():
+    pressed_keys.clear()
+    search_query = ""
+    selected_index = 0
+    results = []
+    
+    while True:
+        handle_events()
+        
+        re_search = False
+        time.sleep(0.25)
+        
+        for char in pressed_keys:
+            if char == 'backspace':
+                search_query = search_query[:-1]
+                re_search = True
+            elif len(char) == 1 and char.isalpha():
+                search_query += char
+                re_search = True
+            elif char == "space":
+                search_query += " "
+                re_search = True
+            elif char == "up":
+                selected_index -= 1
+            elif char == "down":
+                selected_index += 1
+            elif char == "enter" and results != []:
+                queue_song(results[selected_index][1])
+                console.print("Added [green]{}[/] to the queue!".format(results[selected_index][0]))
+                
+        if 'ctrl' in pressed_keys:
+            break
+                
+        pressed_keys.clear()
+    
+        
+        if re_search == True:
+            query = "SELECT title, spotify_id FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query)
+            cur.execute(query)
+            results = cur.fetchall()
+        
+        if selected_index < 0:
+            selected_index = len(results) - 1
+        elif selected_index > len(results) - 1:
+            selected_index = 0
+            
+        search_table = Table(title = "Search Results", box = box.SIMPLE_HEAD, expand = True)
+        search_table.add_column("#", style = 'dim')
+        search_table.add_column("Name", style = 'yellow')
+        search_table.add_column("Duration", style = 'dim')
+            
+        for i in range(len(results)):
+            style = None
+            if i == selected_index:
+                style = 'on yellow'
+            search_table.add_row(str(i), results[i][0], "3:00", style = style)
+        
+
+        if results == []:
+            search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}|".format(search_query), justify = 'left')
+        else:
+            search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}|[dim]{}[/]".format(search_query, results[selected_index][0][len(search_query):]), justify = 'left')
+       
+        layout = Group(
+            search_table,
+            search_query_text
+        )
+        
+        live.update(layout, refresh=True)
+    console.clear()
+        
+def main_loop():
+    global live
+    
+    with Live(make_main_layout(), console = console, auto_refresh = False) as live:
+        while True:
+            
+            handle_events()
+            
+            live.update(make_main_layout(), refresh = True)
+            time.sleep(0.25)
+            
+            for key in pressed_keys:
+                if key == "s":
+                    search_screen()
+                if key == "right":
+                    pygame.mixer.music.stop()
+                    play_queued_song()
+            
+                
+            pressed_keys.clear()
+            
+main_loop()

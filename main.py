@@ -464,7 +464,8 @@ def library_screen():
                     "ctrl+a": "Add song(s) to the selected playlist",
                     "ctrl+n": "Create a new playlist",
                     "Up/Down": "Navigate through albums / playlists",
-                    "Left/Right": "Switch between album and playist."}
+                    "Left/Right": "Switch between album and playist.",
+                    "Enter": "Toggle Navigating through the selected album / playlist"}
     
     while running:
         handle_events()
@@ -604,7 +605,7 @@ def home_screen():
                     "ctrl+v": "Toggle loop.", 
                     "ctrl+w": "Toggle shuffle.", 
                     "Up/Down": "Navigate through the queue.", 
-                    "Right/Left": "Play previous / next song."}
+                    "Right": "Play next song."}
     
     with Live(make_main_layout(), console = console, auto_refresh = False, screen = True) as live:
         

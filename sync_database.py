@@ -1,8 +1,7 @@
 import mysql.connector as mysql
 import csv
-import os
 
-conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'project')
+conn = mysql.connect(host='localhost', user='root', password='sample')
 
 if conn.is_connected():
     cur = conn.cursor()
@@ -12,6 +11,8 @@ else:
     
     
 def sync_db():
+    cur.execute("CREATE DATABAE IF NOT EXISTS compprojectaaaa")
+    cur.execute("use compprojectaaaa")
     cur.execute("""CREATE TABLE IF NOT EXISTS songs (
                     song_id INT NOT NULL PRIMARY KEY,
                     album_id INT,
@@ -57,9 +58,6 @@ def sync_db():
                 cur.execute(insert_query, (int(id), name, int(liked), created))
             
             for song_id, title, artist, liked, album, release_date, dur, spotify_id in reader:
-                if f'{spotify_id}.mp3' in os.listdir("songs"):
-                    os.rename(f"songs/{spotify_id}.mp3", f"songs/{song_id}.mp3")
-                    os.remove(f"songs/{spotify_id}.mp3")
                 insert_query = "INSERT INTO songs VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
                 cur.execute(insert_query, (int(song_id), int(album), title, artist, int(liked), release_date, int(dur), spotify_id))
             

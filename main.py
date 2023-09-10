@@ -527,7 +527,7 @@ def library_screen():
                 if name != "":
                     create_playlist(name)
                     playlists = get_all_playlists()
-            elif key == "right" or key == "left":
+            elif key == "right" or key == "left" and not is_navigating: # shud not change when navigating, causes index error due to different no of albums and playlists
                 selected_type = not selected_type # not 0 = 1, not 1 = 0.
         
         pressed_keys.clear()
@@ -618,7 +618,7 @@ def home_screen():
                 if key == "ctrl+r":
                     running = False
                 elif key == "ctrl+d":
-                    if queue != []:
+                    if queue != [] and len(queue) > selected_index:
                         queue.pop(selected_index)
                 elif key == "ctrl+p":
                     pause_unpause()

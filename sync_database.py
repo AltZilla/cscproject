@@ -31,13 +31,12 @@ def sync_db():
                 )""")
     
     cur.execute("""CREATE TABLE IF NOT EXISTS playlists (
-                    playlist_id INT NOT NULL PRIMARY KEY,
+                    playlist_id INT AUTO_INCREMENT  PRIMARY KEY,
                     playlist_name VARCHAR(100) NOT NULL,
                     created_date DATETIME DEFAULT CURRENT_TIMESTAMP
                 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS playlistsongs (
-                    id INT NOT NULL PRIMARY KEY,
                     song_id INT NOT NULL,
                     playlist_id INT NOT NULL,
                     added_date DATETIME DEFAULT CURRENT_TIMESTAMP

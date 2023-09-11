@@ -11,8 +11,8 @@ else:
     
     
 def sync_db():
-    cur.execute("CREATE DATABAE IF NOT EXISTS compprojectaaaa")
-    cur.execute("use compprojectaaaa")
+    cur.execute("CREATE DATABASE IF NOT EXISTS musicplayer12f")
+    cur.execute("use musicplayer12f")
     cur.execute("""CREATE TABLE IF NOT EXISTS songs (
                     song_id INT NOT NULL PRIMARY KEY,
                     album_id INT,
@@ -27,6 +27,7 @@ def sync_db():
     cur.execute("""CREATE TABLE IF NOT EXISTS albums (
                     album_id INT NOT NULL PRIMARY KEY,
                     album_name VARCHAR(100) NOT NULL,
+                    artist VARCHAR(100) NOT NULL,
                     liked TINYINT(1) NOT NULL,
                     created_date DATETIME DEFAULT CURRENT_TIMESTAMP
                 )""")
@@ -53,9 +54,9 @@ def sync_db():
             reader = csv.reader(f)
             reader2 = csv.reader(f2)
             
-            for id, name, liked, created in reader2:
-                insert_query = "INSERT INTO albums VALUES (%s, %s, %s, %s)"
-                cur.execute(insert_query, (int(id), name, int(liked), created))
+            for id, name, artist, liked, created in reader2:
+                insert_query = "INSERT INTO albums VALUES (%s, %s, %s, %s, %s)"
+                cur.execute(insert_query, (int(id), name, artist, int(liked), created))
             
             for song_id, title, artist, liked, album, release_date, dur, spotify_id in reader:
                 insert_query = "INSERT INTO songs VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"

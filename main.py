@@ -17,7 +17,7 @@ console = Console()
 pygame.init()
 pygame.mixer.music.set_endevent(45)
 
-conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'project')
+conn = mysql.connect(host='localhost', user='root', password='sample', database = 'musicplayer12f')
 
 if conn.is_connected():
     cur = conn.cursor()
@@ -204,6 +204,7 @@ def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
     search_table = Table(title = "Search Results ({})".format("songs" if selected_type == 0 else "albums"), box = box.SIMPLE_HEAD, expand = True)
     search_table.add_column("#", style = 'dim')
     search_table.add_column("Name", style = 'yellow')
+    search_table.add_column("Artist", style = 'yellow')
     search_table.add_column("Duration", style = 'dim')
         
     for i in range(len(songs)):
@@ -211,7 +212,7 @@ def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
         if i == selected_index:
             style = 'black on yellow'
         title = ":heartbeat: " + songs[i][1] if songs[i][3] else songs[i][1] 
-        search_table.add_row(str(i + 1), title, format_sec(songs[i][2]), style = style)
+        search_table.add_row(str(i + 1), title, songs[i][4],format_sec(songs[i][2]), style = style)
 
     if songs == []:
         search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}|".format(query), justify = 'left')
@@ -229,7 +230,7 @@ def search_screen():
     pressed_keys.append('backspace') # Mimic backspace to show search results initially
     search_query = ""
     selected_index = search_type = 0 # 0 for songs, 1 for album search
-    results = [] # Structure: [song_id, title, duration, liked]
+    results = [] # Structure: [song_id, title, duration, liked, artist]
     log = []
     
     running = True
@@ -279,9 +280,9 @@ def search_screen():
         
         if re_search == True:
             if search_type == 0:
-                query = "SELECT song_id, title, duration, liked FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query) # Selects a max of 15 songs
+                query = "SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query) # Selects a max of 15 songs
             else:
-                query = "SELECT album_id, album_name, SUM(duration), albums.liked FROM songs NATURAL JOIN albums WHERE album_name LIKE '{}%' GROUP BY album_id LIMIT 15".format(search_query) # Selects a max of 15 albums
+                query = "SELECT album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs NATURAL JOIN albums WHERE album_name LIKE '{}%' GROUP BY album_id LIMIT 15".format(search_query) # Selects a max of 15 albums
             cur.execute(query)
             results = cur.fetchall()
         
@@ -579,6 +580,7 @@ def make_main_layout(selected_song = 0):
         queue_table = Table(title = "Page [{}/{}] (Total Songs: {})".format(current_page_index + 1, len(pages), len(queue)), box = box.SIMPLE_HEAD, expand = True)
         queue_table.add_column("#", style = 'dim')
         queue_table.add_column("Name", style = 'yellow')
+        queue_table.add_column("Artist", style = 'yellow')
         queue_table.add_column("Duration", style = 'dim')
     
         for i in range(len(current_page)):
@@ -586,7 +588,7 @@ def make_main_layout(selected_song = 0):
             if i == current_index:
                 style = 'black on yellow'
             title = ":heartbeat: " + current_page[i][1] if current_page[i][4] else current_page[i][1] 
-            queue_table.add_row(str(i + 1 + current_page_index * chunk_size), title, format_sec(current_page[i][5]), style = style)
+            queue_table.add_row(str(i + 1 + current_page_index * chunk_size), title, current_page[i][3], format_sec(current_page[i][5]), style = style)
         
         queue_panel = Panel(queue_table, title = 'Queue', style = 'magenta')
 

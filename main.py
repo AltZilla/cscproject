@@ -544,7 +544,7 @@ def library_screen():
 def make_main_layout(selected_song = 0):
     if currently_playing == None:
         text = Align.center(
-            Text("There is no song currently playing!", justify = 'center'),
+            Text("There is no song currently playing! (Press CTRL+I to view a list of commands)", justify = 'center'),
             vertical = 'middle'
         )
         playing_panel = Panel(text, title = 'Not Playing', style = 'red')

@@ -284,7 +284,7 @@ def search_screen():
             if search_type == 0:
                 query = "SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query) # Selects a max of 15 songs
             else:
-                query = "SELECT album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs NATURAL JOIN albums WHERE album_name LIKE '{}%' GROUP BY album_id LIMIT 15".format(search_query) # Selects a max of 15 albums
+                query = "SELECT albums.album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs, albums WHERE songs.album_id = albums.album_id AND album_name LIKE '{}%' GROUP BY album_id LIMIT 15".format(search_query) # Selects a max of 15 albums
             cur.execute(query)
             results = cur.fetchall()
         
@@ -317,7 +317,7 @@ def make_library_layout(albums, playlists, selected_type = 0, selected_index=0, 
         details_table.add_column("Times Played", style = 'dim')
         
     if playlists == []:
-        layout['library']['playlist'].update(Panel("No Liked Playlists.", title = "Playlist"))
+        layout['library']['playlist'].update(Panel("No Playlists Created.", title = "Playlist"))
     else:
         playlist_table = Table(title = "{} Playlists".format(len(playlists)), box = box.SIMPLE_HEAD, expand = True)
         playlist_table.add_column("Name", style = 'yellow')

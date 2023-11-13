@@ -1,6 +1,7 @@
 import mysql.connector as mysql
 import pygame
 import time
+import datetime
 import keyboard
 import random 
 
@@ -16,8 +17,9 @@ console = Console()
 
 pygame.init()
 pygame.mixer.music.set_endevent(45)
+pygame.mixer.music.set_volume(0.0)
 
-conn = mysql.connect(host='localhost', user='root', password='sample', database = 'musicplayer12f')
+conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'musicplayer12f')
 
 if conn.is_connected():
     cur = conn.cursor()
@@ -38,19 +40,19 @@ def handle_key_press(key):
     elif key.name != "ctrl":
         pressed_keys.append(key.name)
 
-keyboard.on_press(handle_key_press) # The handle_key_press(key) func will be called whenever a key is pressed. (key will be the key that was pressed.) 
+keyboard.on_press(handle_key_press) # The handle_key_press(key) func will be called whenever a key is pressed.
 
 def play_next_song():
     global currently_playing, paused
     paused = False
     
     if currently_playing:
-        cur.execute("INSERT INTO recentlyplayed (song_id) VALUES({})".format(currently_playing[0])) # songs id
+        cur.execute("INSERT INTO recentlyplayed (song_id, played_at) VALUES({}, '{}')".format(currently_playing[0], datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))) # songs id
         conn.commit()
         
     if shuffle == True:
         random.shuffle(queue)
-    if loop == True:
+    if loop == True and currently_playing != None:
         queue.append(currently_playing)
     if queue != []:
         song_data = queue.pop(0) # Get the first song
@@ -132,7 +134,7 @@ def get_library_albums():
     cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration FROM albums, songs WHERE songs.album_id = albums.album_id AND songs.liked = 1")
     liked_songs = cur.fetchall()
     
-    cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration, recentlyplayed.played_at FROM songs, recentlyplayed WHERE songs.song_id = recentlyplayed.song_id ORDER BY recentlyplayed.played_at DESC LIMIT 10")
+    cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration, COUNT(songs.song_id) FROM songs, recentlyplayed WHERE songs.song_id = recentlyplayed.song_id GROUP BY songs.song_id ORDER BY COUNT(songs.song_id) DESC")
     recently_played = cur.fetchall()
     
     albums = [
@@ -215,10 +217,10 @@ def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
         search_table.add_row(str(i + 1), title, songs[i][4],format_sec(songs[i][2]), style = style)
 
     if songs == []:
-        search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}|".format(query), justify = 'left')
+        search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/]".format(query), justify = 'left')
     else:
         remaining_text = songs[selected_index][1][len(query):] # this will get the rest of the title from the selected song
-        search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}|[dim]{}[/]".format(query, remaining_text), justify = 'left')
+        search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/][dim]{}[/]".format(query, remaining_text), justify = 'left')
     
     layout = Group(
         search_table,
@@ -312,7 +314,7 @@ def make_library_layout(albums, playlists, selected_type = 0, selected_index=0, 
     details_table.add_column("Duration", style = 'dim')
     
     if selected_type == 0 and selected_index == 1: # Recently played album, special case.
-        details_table.add_column("Played At", style = 'dim')
+        details_table.add_column("Times Played", style = 'dim')
         
     if playlists == []:
         layout['library']['playlist'].update(Panel("No Liked Playlists.", title = "Playlist"))
@@ -384,7 +386,7 @@ def make_library_layout(albums, playlists, selected_type = 0, selected_index=0, 
                     style_song = None
                     if is_navigating and current_index == j:
                         style_song = 'black on yellow'
-                    if selected_index == 1: # The album is recently played ( always at index 1 )
+                    if selected_index == 1: # recentlyplayed is selected.
                         details_table.add_row(str(actual_index + 1), title, format_sec(song[3]), str(song[4]), style=style_song)
                     else:
                         details_table.add_row(str(actual_index + 1), title, format_sec(song[3]), style=style_song)
@@ -405,7 +407,7 @@ def make_library_layout(albums, playlists, selected_type = 0, selected_index=0, 
 
 def add_to_playlist_screen(playlist_id):
     cur.execute("SELECT playlist_name FROM playlists WHERE playlist_id={}".format(playlist_id))
-    name = cur.fetchone()
+    name = cur.fetchone()[0]
     
     selected_index = 0
     search_query = ''
@@ -436,7 +438,7 @@ def add_to_playlist_screen(playlist_id):
                     
         pressed_keys.clear()
         if re_search:
-           cur.execute("SELECT song_id, title, duration, liked FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query)) # Selects a max of 15 songs
+           cur.execute("SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query)) # Selects a max of 15 songs
            results = cur.fetchall()
 
         selected_index = within_range(selected_index, 0, len(results) - 1)
@@ -447,7 +449,7 @@ def add_to_playlist_screen(playlist_id):
             details.append("[dim]{}[/]. [yellow]{}[/]".format(i + 1, selected_songs[i][1]))
             
         layout = Group(
-            Text.from_markup("The Following Songs Will Be Added [yellow](CTRL+S TO SAVE)[/]: \n " + '\n '.join(details) + '\n'),
+            Text.from_markup("The Following Songs Will Be Added To [yellow]{} (CTRL+S TO SAVE)[/]: \n ".format(name) + '\n '.join(details) + '\n'),
             panel
         )
         live.update(layout, refresh=True)
@@ -568,7 +570,7 @@ def make_main_layout(selected_song = 0):
     if queue == []:
         queue_panel = Panel(
             Align.center(Text("There are no songs in the queue!", justify = 'center'), vertical = 'middle'),
-            title = 'Queue', style = 'magenta')
+            title = 'Queue', style = "magenta")
     else:
         chunk_size = (console.height - 14) # This is the max no. of songs we can fit in the page
         if chunk_size < 1:
@@ -606,6 +608,7 @@ def home_screen():
                     "ctrl+l": "Open your library.", 
                     "ctrl+v": "Toggle loop.", 
                     "ctrl+w": "Toggle shuffle.", 
+                    "ctrl+m": "Play the selected song in the queue.",
                     "Up/Down": "Navigate through the queue.", 
                     "Right": "Play next song."}
     
@@ -636,6 +639,9 @@ def home_screen():
                     shuffle = not shuffle
                 elif key == "ctrl+a" and currently_playing:
                     like_song(currently_playing[0])
+                elif key == "ctrl+m":
+                    queue.insert(0, queue.pop(selected_index)) # move the selected song to the start of the queue, and play next song (which will play the selected song)
+                    play_next_song()
                 elif key == "up":
                     selected_index -= 1
                 elif key == "down":

@@ -1,7 +1,7 @@
 import mysql.connector as mysql
 import csv
 
-conn = mysql.connect(host='localhost', user='root', password='sample')
+conn = mysql.connect(host='localhost', user='root', password='syedisdumb')
 
 if conn.is_connected():
     cur = conn.cursor()
@@ -29,24 +29,22 @@ def sync_db():
                     album_name VARCHAR(100) NOT NULL,
                     artist VARCHAR(100) NOT NULL,
                     liked TINYINT(1) NOT NULL,
-                    created_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                    created_at DATE
                 )""")
     
     cur.execute("""CREATE TABLE IF NOT EXISTS playlists (
                     playlist_id INT AUTO_INCREMENT  PRIMARY KEY,
-                    playlist_name VARCHAR(100) NOT NULL,
-                    created_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                    playlist_name VARCHAR(100) NOT NULL
                 )""")
 
     cur.execute("""CREATE TABLE IF NOT EXISTS playlistsongs (
                     song_id INT NOT NULL,
-                    playlist_id INT NOT NULL,
-                    added_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                    playlist_id INT NOT NULL
                 )""")
     
     cur.execute("""CREATE TABLE IF NOT EXISTS recentlyplayed (
                     song_id INT NOT NULL,
-                    played_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    played_at DATETIME
                 );""")
     
     with open("songs.csv") as f:

@@ -1,4 +1,4 @@
-import mysql.connector as mysql
+import sqlite3
 import pygame
 import time
 import datetime
@@ -19,13 +19,8 @@ pygame.init()
 pygame.mixer.music.set_endevent(45)
 pygame.mixer.music.set_volume(0.0)
 
-conn = mysql.connect(host='localhost', user='root', password='syedisdumb', database = 'musicplayer12f')
-
-if conn.is_connected():
-    cur = conn.cursor()
-else:
-    print("Failed to connect to MySQL server")
-    exit() # this quits the program
+conn = sqlite3.connect('music.db')
+cur = conn.cursor()
 
 currently_playing = None
 queue = [] # This will have the structure [song_id, title, album, artist, liked, duration].
@@ -47,7 +42,7 @@ def play_next_song():
     paused = False
     
     if currently_playing:
-        cur.execute("INSERT INTO recentlyplayed (song_id, played_at) VALUES({}, '{}')".format(currently_playing[0], datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))) # songs id
+        cur.execute("INSERT INTO recentlyplayed (song_id, played_at) VALUES(?, ?)", (currently_playing[0], datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         
     if shuffle == True:
@@ -77,8 +72,8 @@ def pause_unpause():
     paused = not paused
         
 def queue_song(song_id):
-    query = "SELECT songs.title, albums.album_name, songs.artist, songs.liked, duration FROM albums, songs WHERE songs.album_id = albums.album_id AND songs.song_id = {}".format(song_id)
-    cur.execute(query)
+    query = "SELECT songs.title, albums.album_name, songs.artist, songs.liked, duration FROM albums, songs WHERE songs.album_id = albums.album_id AND songs.song_id = ?"
+    cur.execute(query, (song_id,))
 
     title, album, artist, liked, duration = cur.fetchone()
     queue.append([song_id, title, album, artist, liked, duration])
@@ -88,11 +83,11 @@ def queue_song(song_id):
         
 def like_song(song_id):
     # Check if the song is already liked
-    cur.execute("SELECT liked FROM songs WHERE song_id = {}".format(song_id))
+    cur.execute("SELECT liked FROM songs WHERE song_id = ?", (song_id,))
     result = cur.fetchone()
 
     liked = not result[0]  # Toggle the liked status
-    cur.execute("UPDATE songs SET liked={} WHERE song_id={}".format(int(liked), song_id))
+    cur.execute("UPDATE songs SET liked=? WHERE song_id=?", (int(liked), song_id))
     conn.commit()
     
     if currently_playing and currently_playing[0] == song_id:
@@ -104,16 +99,16 @@ def like_song(song_id):
 
 def like_album(album_id):
     # Check if the album is already liked
-    cur.execute("SELECT liked FROM albums WHERE album_id = {}".format(album_id))
+    cur.execute("SELECT liked FROM albums WHERE album_id = ?", (album_id,))
     result = cur.fetchone()
 
     liked = not result[0]  # Toggle the liked status
-    cur.execute("UPDATE albums SET liked={} WHERE album_id={}".format(int(liked), album_id))
+    cur.execute("UPDATE albums SET liked=? WHERE album_id=?", (int(liked), album_id))
     conn.commit()
     return liked
 
 def create_playlist(name):
-    cur.execute("INSERT INTO playlists (playlist_name) VALUES('{}')".format(name))
+    cur.execute("INSERT INTO playlists (playlist_name) VALUES(?)", (name,))
     conn.commit()
 
 def format_sec(seconds):
@@ -145,7 +140,7 @@ def get_library_albums():
     cur.execute("SELECT album_id, album_name FROM albums WHERE liked=1")
     details = cur.fetchall()
     for data in details:
-        cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration FROM albums, songs WHERE songs.album_id = albums.album_id AND albums.album_id={}".format(data[0]))
+        cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration FROM albums, songs WHERE songs.album_id = albums.album_id AND albums.album_id=?", (data[0],))
         songs = cur.fetchall()
         albums.append({'id': data[0], "name": data[1], "songs": songs})
 
@@ -156,7 +151,7 @@ def get_all_playlists():
     cur.execute("SELECT playlist_id, playlist_name FROM playlists")
     details = cur.fetchall()
     for data in details:
-        cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration FROM songs, playlistsongs WHERE songs.song_id = playlistsongs.song_id AND playlistsongs.playlist_id={}".format(data[0]))
+        cur.execute("SELECT songs.song_id, songs.title, songs.liked, songs.duration FROM songs, playlistsongs WHERE songs.song_id = playlistsongs.song_id AND playlistsongs.playlist_id=?", (data[0],))
         songs = cur.fetchall()
         playlists.append({'id': data[0], "name": data[1], "songs": songs})
 
@@ -267,7 +262,7 @@ def search_screen():
                     queue_song(results[selected_index][0])
                     log.append("Added [green]{}[/] to the queue.".format(results[selected_index][1]))
                 else:
-                    cur.execute("SELECT song_id FROM songs WHERE album_id={}".format(results[selected_index][0]))
+                    cur.execute("SELECT song_id FROM songs WHERE album_id=?", (results[selected_index][0],))
                     for song_id in cur.fetchall():
                         queue_song(song_id[0])
                     log.append("Added album [green]{}[/] to the queue.".format(results[selected_index][1]))
@@ -282,10 +277,11 @@ def search_screen():
         
         if re_search == True:
             if search_type == 0:
-                query = "SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query) # Selects a max of 15 songs
+                query = "SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE ? LIMIT 15"
+                cur.execute(query, (search_query + '%',))
             else:
-                query = "SELECT albums.album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs, albums WHERE songs.album_id = albums.album_id AND album_name LIKE '{}%' GROUP BY album_id LIMIT 15".format(search_query) # Selects a max of 15 albums
-            cur.execute(query)
+                query = "SELECT albums.album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs, albums WHERE songs.album_id = albums.album_id AND album_name LIKE ? GROUP BY album_id LIMIT 15"
+                cur.execute(query, (search_query + '%',))
             results = cur.fetchall()
         
         selected_index = within_range(selected_index, 0, len(results) - 1)
@@ -406,7 +402,7 @@ def make_library_layout(albums, playlists, selected_type = 0, selected_index=0, 
     return layout
 
 def add_to_playlist_screen(playlist_id):
-    cur.execute("SELECT playlist_name FROM playlists WHERE playlist_id={}".format(playlist_id))
+    cur.execute("SELECT playlist_name FROM playlists WHERE playlist_id=?", (playlist_id,))
     name = cur.fetchone()[0]
     
     selected_index = 0
@@ -422,11 +418,11 @@ def add_to_playlist_screen(playlist_id):
         for key in pressed_keys:
             if key == "ctrl+s":
                 running = False
-                cur.execute("SELECT song_id FROM playlistsongs WHERE playlist_id={}".format(playlist_id))
+                cur.execute("SELECT song_id FROM playlistsongs WHERE playlist_id=?", (playlist_id,))
                 already_existing_songs = cur.fetchall()
                 for song in selected_songs:
                     if not song[0] in already_existing_songs:
-                        cur.execute("INSERT INTO playlistsongs (song_id, playlist_id) VALUES({}, {})".format(song[0], playlist_id))
+                        cur.execute("INSERT INTO playlistsongs (song_id, playlist_id) VALUES(?, ?)", (song[0], playlist_id))
                 conn.commit()
             elif key == "enter" and results != []:
                 if results[selected_index] not in selected_songs:
@@ -438,7 +434,7 @@ def add_to_playlist_screen(playlist_id):
                     
         pressed_keys.clear()
         if re_search:
-           cur.execute("SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE '{}%' LIMIT 15".format(search_query)) # Selects a max of 15 songs
+           cur.execute("SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE ? LIMIT 15", (search_query + '%',))
            results = cur.fetchall()
 
         selected_index = within_range(selected_index, 0, len(results) - 1)
@@ -486,10 +482,10 @@ def library_screen():
                     current_song = playlists[selected_index]["songs"]
                     if current_song != []:
                         current_song = current_song[navigation_index]
-                        cur.execute("DELETE FROM playlistsongs WHERE song_id={} AND playlist_id={}".format(current_song[0], playlists[selected_index]["id"]))
+                        cur.execute("DELETE FROM playlistsongs WHERE song_id=? AND playlist_id=?", (current_song[0], playlists[selected_index]["id"]))
                 else: # Delete the playlist + all the songs in it
-                    cur.execute("DELETE FROM playlists WHERE playlist_id={}".format(playlists[selected_index]["id"]))
-                    cur.execute("DELETE FROM playlistsongs WHERE playlist_id={}".format(playlists[selected_index]["id"]))
+                    cur.execute("DELETE FROM playlists WHERE playlist_id=?", (playlists[selected_index]["id"],))
+                    cur.execute("DELETE FROM playlistsongs WHERE playlist_id=?", (playlists[selected_index]["id"],))
                 conn.commit()
                 playlists = get_all_playlists()
             elif key == "ctrl+q":

@@ -4,6 +4,9 @@ import time
 import datetime
 import keyboard
 import random 
+import os
+import yt_dlp
+from ytmusicapi import YTMusic
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -15,9 +18,11 @@ from rich.layout import Layout
 
 console = Console()
 
+live = None
+
 pygame.init()
 pygame.mixer.music.set_endevent(45)
-pygame.mixer.music.set_volume(0.0)
+pygame.mixer.music.set_volume(0.5)
 
 conn = sqlite3.connect('music.db')
 cur = conn.cursor()
@@ -51,9 +56,30 @@ def play_next_song():
         queue.append(currently_playing)
     if queue != []:
         song_data = queue.pop(0) # Get the first song
+        song_id, title, album, artist, liked, duration = song_data
+        song_path = f"songs/{song_id}.mp3"
+
+        if not os.path.exists(song_path):
+            ytmusic = YTMusic()
+            search_results = ytmusic.search(f"{title} {artist}", filter="songs")
+            if search_results:
+                video_id = search_results[0]['videoId']
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': f"songs/{song_id}",
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                    'verbose': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+
         try:
-            pygame.mixer.music.load('songs/' + str(song_data[0]) + '.mp3')
-        except:
+            pygame.mixer.music.load(song_path)
+        except Exception as e:
             play_next_song()
             return
         pygame.mixer.music.play()
@@ -261,6 +287,8 @@ def search_screen():
                 if search_type == 0:
                     queue_song(results[selected_index][0])
                     log.append("Added [green]{}[/] to the queue.".format(results[selected_index][1]))
+                    if live:
+                        live.update(make_main_layout(), refresh=True)
                 else:
                     cur.execute("SELECT song_id FROM songs WHERE album_id=?", (results[selected_index][0],))
                     for song_id in cur.fetchall():
@@ -608,8 +636,8 @@ def home_screen():
                     "Up/Down": "Navigate through the queue.", 
                     "Right": "Play next song."}
     
-    with Live(make_main_layout(), console = console, auto_refresh = False, screen = True) as live:
-        
+    with Live(make_main_layout(), console = console, auto_refresh = False, screen = True) as live_obj:
+        live = live_obj
         selected_index = 0
         while running:
             handle_events()

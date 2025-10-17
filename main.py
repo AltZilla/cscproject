@@ -258,26 +258,30 @@ def show_commands(commands):
     live.update(Align.center(panel), refresh = True)
     keyboard.wait("enter")
             
-def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
+def make_search_layout(results, query, selected_index = 0, selected_type = 0):
     search_table = Table(title = "Search Results ({})".format("songs" if selected_type == 0 else "albums"), box = box.SIMPLE_HEAD, expand = True)
     search_table.add_column("#", style = 'dim')
     search_table.add_column("Name", style = 'yellow')
     search_table.add_column("Artist", style = 'yellow')
-    search_table.add_column("Duration", style = 'dim')
+    if selected_type == 0:
+        search_table.add_column("Duration", style = 'dim')
         
-    for i in range(len(songs)):
+    for i in range(len(results)):
         style = None
         if i == selected_index:
             style = 'black on yellow'
-        title = songs[i]['name']
-        artist = songs[i]['artists'][0]['name']
-        duration = songs[i]['duration_ms'] / 1000
-        search_table.add_row(str(i + 1), title, artist, format_sec(duration), style = style)
+        title = results[i]['name']
+        artist = results[i]['artists'][0]['name']
+        if selected_type == 0:
+            duration = results[i]['duration_ms'] / 1000
+            search_table.add_row(str(i + 1), title, artist, format_sec(duration), style = style)
+        else:
+            search_table.add_row(str(i + 1), title, artist, style = style)
 
-    if songs == []:
+    if results == []:
         search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/]".format(query), justify = 'left')
     else:
-        remaining_text = songs[selected_index]['name'][len(query):] # this will get the rest of the title from the selected song
+        remaining_text = results[selected_index]['name'][len(query):] # this will get the rest of the title from the selected song
         search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/][dim]{}[/]".format(query, remaining_text), justify = 'left')
     
     layout = Group(
@@ -332,6 +336,7 @@ def search_screen():
     selected_index = 0
     results = []
     log = []
+    search_type = 0 # 0 for songs, 1 for albums
     
     running = True
     
@@ -340,7 +345,8 @@ def search_screen():
     last_searched_query = ""
 
     key_bindings = {"ctrl+r": "Returns to the home screen.",
-                    "Enter": "Queue a song / album"}
+                    "Enter": "Queue a song / album",
+                    "tab": "Switch between song and album search."}
     
     while running:
         handle_events()
@@ -361,27 +367,45 @@ def search_screen():
                 selected_index -= 1
             elif char == "down":
                 selected_index += 1
+            elif char == "tab":
+                search_type = not search_type
+                results = []
             elif char == "enter" and results != []:
-                track = results[selected_index]
-                song_id = add_spotify_track_to_db(track)
-                if song_id != -1:
-                    queue_song(song_id)
-                    log.append("Added [green]{}[/] to the queue.".format(track['name']))
+                if search_type == 0:
+                    track = results[selected_index]
+                    song_id = add_spotify_track_to_db(track)
+                    if song_id != -1:
+                        queue_song(song_id)
+                        log.append("Added [green]{}[/] to the queue.".format(track['name']))
+                        if live:
+                            live.update(make_main_layout(), refresh=True)
+                else:
+                    album = results[selected_index]
+                    tracks = sp.album_tracks(album['id'])
+                    for track in tracks['items']:
+                        # The track object from album_tracks is different from the one from search, so we need to get the full track object
+                        full_track = sp.track(track['id'])
+                        song_id = add_spotify_track_to_db(full_track)
+                        if song_id != -1:
+                            queue_song(song_id)
+                    log.append("Added album [green]{}[/] to the queue.".format(album['name']))
                     if live:
                         live.update(make_main_layout(), refresh=True)
+
     
         pressed_keys.clear()
         
         if time.time() - last_input_time > search_delay and search_query != last_searched_query:
             if search_query:
-                spotify_results = sp.search(search_query, type='track', limit=15)
-                results = spotify_results['tracks']['items']
+                search_type_str = 'track' if search_type == 0 else 'album'
+                spotify_results = sp.search(search_query, type=search_type_str, limit=15)
+                results = spotify_results['tracks' if search_type == 0 else 'albums']['items']
             else:
                 results = []
             last_searched_query = search_query
         
         selected_index = within_range(selected_index, 0, len(results) - 1)
-        panel = make_search_layout(results, search_query, selected_index = selected_index)
+        panel = make_search_layout(results, search_query, selected_index = selected_index, selected_type=search_type)
         
         layout = Group(
             Text.from_markup('\n'.join(log[-4:])), # Last 4 logs,

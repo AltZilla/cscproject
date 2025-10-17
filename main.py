@@ -7,6 +7,13 @@ import random
 import os
 import yt_dlp
 from ytmusicapi import YTMusic
+from dotenv import load_dotenv
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+
+load_dotenv()
+
+sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
 
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -15,6 +22,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.table import Table, box
 from rich.layout import Layout
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
 console = Console()
 
@@ -56,26 +64,52 @@ def play_next_song():
         queue.append(currently_playing)
     if queue != []:
         song_data = queue.pop(0) # Get the first song
-        song_id, title, album, artist, liked, duration = song_data
+        song_id, title, album, artist, liked, duration, spotify_id = song_data
         song_path = f"songs/{song_id}.mp3"
 
         if not os.path.exists(song_path):
+            search_query = f"{title} {artist}"
+            if spotify_id:
+                try:
+                    track = sp.track(spotify_id)
+                    search_query = f"{track['name']} {track['artists'][0]['name']}"
+                except:
+                    pass
+
             ytmusic = YTMusic()
-            search_results = ytmusic.search(f"{title} {artist}", filter="songs")
+            search_results = ytmusic.search(search_query, filter="songs")
             if search_results:
                 video_id = search_results[0]['videoId']
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': f"songs/{song_id}",
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }],
-                    'verbose': True,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+                
+                with Progress(
+                    TextColumn("[bold blue]{task.description}", justify="right"),
+                    BarColumn(bar_width=None),
+                    "[progress.percentage]{task.percentage:>3.0f}%",
+                    "•",
+                    TimeRemainingColumn(),
+                ) as progress:
+                    task_id = progress.add_task("Downloading", total=None)
+
+                    def my_hook(d):
+                        if d['status'] == 'downloading':
+                            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
+                            if total_bytes:
+                                progress.update(task_id, total=total_bytes, completed=d['downloaded_bytes'])
+                        if d['status'] == 'finished':
+                            progress.update(task_id, completed=d.get('total_bytes'))
+
+                    ydl_opts = {
+                        'format': 'bestaudio/best',
+                        'outtmpl': f"songs/{song_id}",
+                        'progress_hooks': [my_hook],
+                        'postprocessors': [{
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': '192',
+                        }],
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
         try:
             pygame.mixer.music.load(song_path)
@@ -98,11 +132,11 @@ def pause_unpause():
     paused = not paused
         
 def queue_song(song_id):
-    query = "SELECT songs.title, albums.album_name, songs.artist, songs.liked, duration FROM albums, songs WHERE songs.album_id = albums.album_id AND songs.song_id = ?"
+    query = "SELECT songs.title, albums.album_name, songs.artist, songs.liked, duration, songs.spotify_id FROM albums, songs WHERE songs.album_id = albums.album_id AND songs.song_id = ?"
     cur.execute(query, (song_id,))
 
-    title, album, artist, liked, duration = cur.fetchone()
-    queue.append([song_id, title, album, artist, liked, duration])
+    title, album, artist, liked, duration, spotify_id = cur.fetchone()
+    queue.append([song_id, title, album, artist, liked, duration, spotify_id])
     
     if currently_playing == None:
         play_next_song()
@@ -138,6 +172,7 @@ def create_playlist(name):
     conn.commit()
 
 def format_sec(seconds):
+    seconds = int(seconds)
     min, sec = divmod(seconds, 60)
     if sec < 10:
         sec = "0" + str(sec)
@@ -234,13 +269,15 @@ def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
         style = None
         if i == selected_index:
             style = 'black on yellow'
-        title = ":heartbeat: " + songs[i][1] if songs[i][3] else songs[i][1] 
-        search_table.add_row(str(i + 1), title, songs[i][4],format_sec(songs[i][2]), style = style)
+        title = songs[i]['name']
+        artist = songs[i]['artists'][0]['name']
+        duration = songs[i]['duration_ms'] / 1000
+        search_table.add_row(str(i + 1), title, artist, format_sec(duration), style = style)
 
     if songs == []:
         search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/]".format(query), justify = 'left')
     else:
-        remaining_text = songs[selected_index][1][len(query):] # this will get the rest of the title from the selected song
+        remaining_text = songs[selected_index]['name'][len(query):] # this will get the rest of the title from the selected song
         search_query_text = Text.from_markup("🔎 [yellow] Searching For: [/] {}[blink]|[/][dim]{}[/]".format(query, remaining_text), justify = 'left')
     
     layout = Group(
@@ -248,29 +285,73 @@ def make_search_layout(songs, query, selected_index = 0, selected_type = 0):
         search_query_text
     )
     return layout
-     
+
+def add_spotify_track_to_db(track):
+    # Check if song exists
+    cur.execute("SELECT song_id FROM songs WHERE spotify_id = ?", (track['id'],))
+    result = cur.fetchone()
+    if result:
+        return result[0]
+
+    # Check if album exists
+    cur.execute("SELECT album_id FROM albums WHERE spotify_album_id = ?", (track['album']['id'],))
+    album_result = cur.fetchone()
+    if album_result:
+        album_id = album_result[0]
+    else:
+        # Create new album
+        cur.execute("SELECT MAX(album_id) FROM albums")
+        max_id = cur.fetchone()[0]
+        album_id = max_id + 1 if max_id else 1
+        album_name = track['album']['name']
+        artist = track['album']['artists'][0]['name']
+        created_at = track['album']['release_date']
+        cur.execute("INSERT INTO albums (album_id, album_name, artist, liked, created_at, spotify_album_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    (album_id, album_name, artist, 0, created_at, track['album']['id']))
+        conn.commit()
+
+    # Create new song
+    cur.execute("SELECT MAX(song_id) FROM songs")
+    max_id = cur.fetchone()[0]
+    song_id = max_id + 1 if max_id else 1
+    title = track['name']
+    artist = track['artists'][0]['name']
+    duration = track['duration_ms'] / 1000
+    release_date = track['album']['release_date']
+    spotify_id = track['id']
+
+    cur.execute("INSERT INTO songs (song_id, album_id, title, artist, liked, release_date, duration, spotify_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (song_id, album_id, title, artist, 0, release_date, duration, spotify_id))
+    conn.commit()
+
+    return song_id
+
 def search_screen():
     pressed_keys.append('backspace') # Mimic backspace to show search results initially
     search_query = ""
-    selected_index = search_type = 0 # 0 for songs, 1 for album search
-    results = [] # Structure: [song_id, title, duration, liked, artist]
+    selected_index = 0
+    results = []
     log = []
     
     running = True
     
-    key_bindings = {"ctrl+r": "Returns to the home screen.", 
-                    "ctrl+a": "Like the selected song / album.", 
-                    "ctrl+t":"Toggle between song and album search.", 
-                    "Up/Down": "Navigate through searched songs / albums.", 
+    last_input_time = 0
+    search_delay = 0.25
+    last_searched_query = ""
+
+    key_bindings = {"ctrl+r": "Returns to the home screen.",
                     "Enter": "Queue a song / album"}
     
     while running:
         handle_events()
         
-        re_search = False # This is true when search results should be updated
-        time.sleep(0.25)
+        time.sleep(0.1)
         
-        search_query, re_search = handle_input(search_query)
+        search_query, changed = handle_input(search_query)
+
+        if changed:
+            last_input_time = time.time()
+
         for char in pressed_keys:
             if char == "ctrl+r":
                 running = False
@@ -280,40 +361,27 @@ def search_screen():
                 selected_index -= 1
             elif char == "down":
                 selected_index += 1
-            elif char == "ctrl+t":
-                search_type = not search_type
-                re_search = True
             elif char == "enter" and results != []:
-                if search_type == 0:
-                    queue_song(results[selected_index][0])
-                    log.append("Added [green]{}[/] to the queue.".format(results[selected_index][1]))
+                track = results[selected_index]
+                song_id = add_spotify_track_to_db(track)
+                if song_id != -1:
+                    queue_song(song_id)
+                    log.append("Added [green]{}[/] to the queue.".format(track['name']))
                     if live:
                         live.update(make_main_layout(), refresh=True)
-                else:
-                    cur.execute("SELECT song_id FROM songs WHERE album_id=?", (results[selected_index][0],))
-                    for song_id in cur.fetchall():
-                        queue_song(song_id[0])
-                    log.append("Added album [green]{}[/] to the queue.".format(results[selected_index][1]))
-            elif char == "ctrl+a":
-                if search_type == 0:
-                    like_song(results[selected_index][0])
-                else:
-                    like_album(results[selected_index][0])
-                re_search = True
     
         pressed_keys.clear()
         
-        if re_search == True:
-            if search_type == 0:
-                query = "SELECT song_id, title, duration, liked, artist FROM songs WHERE title LIKE ? LIMIT 15"
-                cur.execute(query, (search_query + '%',))
+        if time.time() - last_input_time > search_delay and search_query != last_searched_query:
+            if search_query:
+                spotify_results = sp.search(search_query, type='track', limit=15)
+                results = spotify_results['tracks']['items']
             else:
-                query = "SELECT albums.album_id, album_name, SUM(duration), albums.liked, albums.artist FROM songs, albums WHERE songs.album_id = albums.album_id AND album_name LIKE ? GROUP BY album_id LIMIT 15"
-                cur.execute(query, (search_query + '%',))
-            results = cur.fetchall()
+                results = []
+            last_searched_query = search_query
         
         selected_index = within_range(selected_index, 0, len(results) - 1)
-        panel = make_search_layout(results, search_query, selected_index = selected_index, selected_type=search_type)
+        panel = make_search_layout(results, search_query, selected_index = selected_index)
         
         layout = Group(
             Text.from_markup('\n'.join(log[-4:])), # Last 4 logs,
@@ -560,10 +628,15 @@ def library_screen():
         pressed_keys.clear()
         
         t = albums if selected_type == 0 else playlists
-        if not is_navigating:
-            selected_index = within_range(selected_index, 0, len(t) - 1)
-        else:
-            navigation_index = within_range(navigation_index, 0, len(t[selected_index]["songs"]) - 1)
+        if t:
+            if not is_navigating:
+                selected_index = within_range(selected_index, 0, len(t) - 1)
+            else:
+                try:
+                    navigation_index = within_range(navigation_index, 0, len(t[selected_index]["songs"]) - 1)
+                except IndexError:
+                    is_navigating = False # Exit navigation mode
+                    selected_index = 0
         
         live.update(make_library_layout(albums, playlists, selected_type, selected_index, is_navigating, navigation_index), refresh = True)
         
@@ -677,5 +750,6 @@ def home_screen():
             live.update(make_main_layout(selected_song = selected_index), refresh = True)
                 
             pressed_keys.clear()
+    keyboard.unhook_all()
             
 home_screen()

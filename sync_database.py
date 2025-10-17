@@ -21,7 +21,8 @@ def sync_db():
                     album_name VARCHAR(100) NOT NULL,
                     artist VARCHAR(100) NOT NULL,
                     liked TINYINT(1) NOT NULL,
-                    created_at DATE
+                    created_at DATE,
+                    spotify_album_id VARCHAR(100)
                 )""")
     
     cur.execute("""CREATE TABLE IF NOT EXISTS playlists (
@@ -45,7 +46,7 @@ def sync_db():
             reader2 = csv.reader(f2)
             
             for id, name, artist, liked, created in reader2:
-                insert_query = "INSERT INTO albums VALUES (?, ?, ?, ?, ?)"
+                insert_query = "INSERT INTO albums (album_id, album_name, artist, liked, created_at) VALUES (?, ?, ?, ?, ?)"
                 cur.execute(insert_query, (int(id), name, artist, int(liked), created))
             
             for song_id, title, artist, liked, album, release_date, dur, spotify_id in reader:

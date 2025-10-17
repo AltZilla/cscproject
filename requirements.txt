@@ -3,3 +3,5 @@ keyboard
 rich
 yt-dlp
 ytmusicapi
+spotipy
+python-dotenv
